@@ -13,6 +13,7 @@ Variabili d'ambiente: SMTP_USER, SMTP_PASS, MAIL_TO (facoltativo), EVENT_IDS
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import requests
@@ -68,14 +69,29 @@ def main() -> int:
     if not ids:
         print("Imposta EVENT_IDS", file=sys.stderr)
         return 1
+
+    if os.environ.get("TEST_EMAIL") == "true":
+        send_mail("✅ Prova avviso biglietti",
+                  "Se leggi questa email, gli avvisi funzionano.")
+        print("[email di prova inviata]")
+
+    # Resta attivo per LOOP_MINUTES minuti, controllando ogni INTERVAL_SECONDS secondi.
+    loop_s = float(os.environ.get("LOOP_MINUTES", "0")) * 60
+    interval = float(os.environ.get("INTERVAL_SECONDS", "30"))
+    end = time.monotonic() + loop_s
     errors = 0
-    for event_id in ids:
-        try:
-            check(event_id)
-        except Exception as e:
-            errors += 1
-            print(f"[ERRORE] {event_id}: {e}", file=sys.stderr)
-    return 1 if errors else 0
+    while True:
+        print(time.strftime("%H:%M:%S"), end=" ")
+        for event_id in ids:
+            try:
+                check(event_id)
+            except Exception as e:
+                errors += 1
+                print(f"[ERRORE] {event_id}: {e}", file=sys.stderr)
+        if time.monotonic() + interval > end:
+            break
+        time.sleep(interval)
+    return 0 if loop_s or not errors else 1
 
 
 if __name__ == "__main__":
