@@ -2,8 +2,15 @@ name: Ticketag Sampdoria
 
 on:
   schedule:
-    - cron: "*/5 * * * *"    # ogni 5 minuti (il minimo consentito da GitHub)
+    # Ogni ora: se un controllo è già in corso, il successivo aspetta e parte appena finisce,
+    # così la sorveglianza resta continua anche se GitHub ritarda gli avvii.
+    - cron: "17 * * * *"
   workflow_dispatch:
+    inputs:
+      test_email:
+        description: "Manda anche un'email di prova"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -15,20 +22,24 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install requests beautifulsoup4
-      - name: Controlla i biglietti
+      - name: Controlla i biglietti (ogni 30 secondi per quasi 6 ore)
         env:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
+          TEST_EMAIL: ${{ inputs.test_email }}
+          LOOP_MINUTES: "340"
+          INTERVAL_SECONDS: "30"
           # Sampdoria – Benevento, sabato 21 novembre ore 15:00
           EVENT_IDS: "e1f0aaf5-dc30-4156-8b72-7ddea18c0a43"
-        run: python ticketag_monitor.py
+        run: python -u ticketag_monitor.py
       - name: Salva lo stato
         if: always()
         run: |
