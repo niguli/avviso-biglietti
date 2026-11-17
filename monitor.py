@@ -55,7 +55,7 @@ def send_mail(subject: str, body: str) -> None:
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = subject
     msg["From"] = user
-    msg["To"] = os.environ.get("MAIL_TO", user)
+    msg["To"] = os.environ.get("MAIL_TO", "").strip() or user  # vuoto → mando a te stesso
     host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
     port = int(os.environ.get("SMTP_PORT", "465"))
     with smtplib.SMTP_SSL(host, port) as s:
