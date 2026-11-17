@@ -38,6 +38,28 @@ def key(t: dict) -> str:
     return str(t.get("id") or json.dumps(t, sort_keys=True))
 
 
+def send_push(title: str, message: str, click_url: str) -> None:
+    """Notifica istantanea sul telefono tramite l'app gratuita ntfy (ntfy.sh)."""
+    topic = os.environ.get("NTFY_TOPIC", "").strip()
+    if not topic:
+        return
+    r = requests.post("https://ntfy.sh/", timeout=10, json={
+        "topic": topic, "title": title, "message": message,
+        "priority": 5, "tags": ["tickets"], "click": click_url,
+    })
+    r.raise_for_status()
+
+
+def notify(title: str, message: str, click_url: str) -> None:
+    """Prima la push (immediata), poi l'email. Un errore in una non blocca l'altra."""
+    for name, fn in (("push", lambda: send_push(title, message, click_url)),
+                     ("email", lambda: send_mail(title, message))):
+        try:
+            fn()
+        except Exception as e:
+            print(f"[ERRORE invio {name}] {e}", file=sys.stderr)
+
+
 def check(event_id: str) -> None:
     r = requests.get(f"{BASE_URL}/api/events/{event_id}/tickets", headers=HEADERS, timeout=30)
     r.raise_for_status()
@@ -54,8 +76,8 @@ def check(event_id: str) -> None:
         body = (f"Ci sono {len(new)} nuovi posti in rivendita:\n\n"
                 + "\n".join(describe(t) for t in new)
                 + f"\n\nCorri a prenderli: {page}\n")
-        send_mail(f"🎟️ Biglietti disponibili ({len(new)}) – Sampdoria", body)
-        print(f"[NUOVI BIGLIETTI – email inviata] {event_id}: {len(new)}")
+        notify(f"🎟️ Biglietti disponibili ({len(new)}) – Sampdoria", body, page)
+        print(f"[NUOVI BIGLIETTI – avviso inviato] {event_id}: {len(new)}")
     else:
         print(f"[nessun nuovo biglietto] {event_id} (in vendita ora: {len(offers)})")
 
@@ -71,9 +93,10 @@ def main() -> int:
         return 1
 
     if os.environ.get("TEST_EMAIL") == "true":
-        send_mail("✅ Prova avviso biglietti",
-                  "Se leggi questa email, gli avvisi funzionano.")
-        print("[email di prova inviata]")
+        notify("✅ Prova avviso biglietti",
+               "Se leggi questo messaggio, gli avvisi funzionano.",
+               f"{BASE_URL}/Partita/{ids[0]}")
+        print("[avviso di prova inviato]")
 
     # Resta attivo per LOOP_MINUTES minuti, controllando ogni INTERVAL_SECONDS secondi.
     loop_s = float(os.environ.get("LOOP_MINUTES", "0")) * 60
