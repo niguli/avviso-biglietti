@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       test_email:
-        description: "Manda anche un'email di prova"
+        description: "Manda anche un avviso di prova (push + email)"
         type: boolean
         default: false
 
@@ -29,14 +29,15 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install requests beautifulsoup4
-      - name: Controlla i biglietti (ogni 30 secondi per quasi 6 ore)
+      - name: Controlla i biglietti (ogni 10 secondi per quasi 6 ore)
         env:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           TEST_EMAIL: ${{ inputs.test_email }}
           LOOP_MINUTES: "340"
-          INTERVAL_SECONDS: "30"
+          INTERVAL_SECONDS: "10"
           # Sampdoria – Benevento, sabato 21 novembre ore 15:00
           EVENT_IDS: "e1f0aaf5-dc30-4156-8b72-7ddea18c0a43"
         run: python -u ticketag_monitor.py
