@@ -6,8 +6,9 @@ Legge direttamente i dati che usa la pagina:
   https://sampdoria-ticketag.ticketone.it/api/events/<ID>/tickets
 e manda un'email solo per i biglietti NUOVI (non ripete l'avviso per quelli già segnalati).
 
-Variabili d'ambiente: SMTP_USER, SMTP_PASS, MAIL_TO (facoltativo), EVENT_IDS
-(uno o più ID partita separati da virgola; l'ID è l'ultima parte dell'indirizzo della pagina).
+Variabili d'ambiente: SMTP_USER, SMTP_PASS, MAIL_TO (facoltativo), NTFY_TOPIC (facoltativo),
+EVENT_URLS: uno o più link di pagine partita Ticketag separati da virgola
+(va bene anche solo l'ID finale). Se è vuota, il controllo è in pausa.
 """
 
 import json
@@ -15,6 +16,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 
@@ -60,8 +62,16 @@ def notify(title: str, message: str, click_url: str) -> None:
             print(f"[ERRORE invio {name}] {e}", file=sys.stderr)
 
 
-def check(event_id: str) -> None:
-    r = requests.get(f"{BASE_URL}/api/events/{event_id}/tickets", headers=HEADERS, timeout=30)
+def parse_event(entry: str) -> tuple[str, str]:
+    """Da 'https://xxx-ticketag.ticketone.it/Partita/<ID>' (o solo '<ID>') a (sito, ID)."""
+    if entry.startswith("http"):
+        u = urlparse(entry)
+        return f"{u.scheme}://{u.netloc}", u.path.rstrip("/").split("/")[-1]
+    return BASE_URL, entry
+
+
+def check(base: str, event_id: str) -> None:
+    r = requests.get(f"{base}/api/events/{event_id}/tickets", headers=HEADERS, timeout=30)
     r.raise_for_status()
     data = r.json()
     offers = (data.get("tickets") or []) + (data.get("bundles") or [])
@@ -72,11 +82,11 @@ def check(event_id: str) -> None:
     new = [t for k, t in current.items() if k not in seen]
 
     if new:
-        page = f"{BASE_URL}/Partita/{event_id}"
+        page = f"{base}/Partita/{event_id}"
         body = (f"Ci sono {len(new)} nuovi posti in rivendita:\n\n"
                 + "\n".join(describe(t) for t in new)
                 + f"\n\nCorri a prenderli: {page}\n")
-        notify(f"🎟️ Biglietti disponibili ({len(new)}) – Sampdoria", body, page)
+        notify(f"🎟️ Biglietti disponibili ({len(new)})", body, page)
         print(f"[NUOVI BIGLIETTI – avviso inviato] {event_id}: {len(new)}")
     else:
         print(f"[nessun nuovo biglietto] {event_id} (in vendita ora: {len(offers)})")
@@ -87,15 +97,17 @@ def check(event_id: str) -> None:
 
 def main() -> int:
     STATE_DIR.mkdir(exist_ok=True)
-    ids = [i.strip() for i in os.environ.get("EVENT_IDS", "").split(",") if i.strip()]
-    if not ids:
-        print("Imposta EVENT_IDS", file=sys.stderr)
-        return 1
+    raw = os.environ.get("EVENT_URLS") or os.environ.get("EVENT_IDS") or ""
+    events = [parse_event(e.strip()) for e in raw.split(",") if e.strip()]
+    if not events:
+        print("Nessun link in EVENT_URLS: controllo in pausa.")
+        return 0
+    print("Controllo:", ", ".join(f"{b}/Partita/{i}" for b, i in events))
 
     if os.environ.get("TEST_EMAIL") == "true":
         notify("✅ Prova avviso biglietti",
                "Se leggi questo messaggio, gli avvisi funzionano.",
-               f"{BASE_URL}/Partita/{ids[0]}")
+               f"{events[0][0]}/Partita/{events[0][1]}")
         print("[avviso di prova inviato]")
 
     # Resta attivo per LOOP_MINUTES minuti, controllando ogni INTERVAL_SECONDS secondi.
@@ -105,9 +117,9 @@ def main() -> int:
     errors = 0
     while True:
         print(time.strftime("%H:%M:%S"), end=" ")
-        for event_id in ids:
+        for base, event_id in events:
             try:
-                check(event_id)
+                check(base, event_id)
             except Exception as e:
                 errors += 1
                 print(f"[ERRORE] {event_id}: {e}", file=sys.stderr)
