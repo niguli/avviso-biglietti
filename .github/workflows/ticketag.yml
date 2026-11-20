@@ -1,4 +1,4 @@
-name: Ticketag Sampdoria
+name: Avviso biglietti Ticketag
 
 on:
   schedule:
@@ -38,8 +38,8 @@ jobs:
           TEST_EMAIL: ${{ inputs.test_email }}
           LOOP_MINUTES: "340"
           INTERVAL_SECONDS: "10"
-          # Sampdoria – Benevento, sabato 21 novembre ore 15:00
-          EVENT_IDS: "e1f0aaf5-dc30-4156-8b72-7ddea18c0a43"
+          # Il link della partita si imposta in Settings → Secrets and variables → Actions → Variables
+          EVENT_URLS: ${{ vars.EVENT_URLS }}
         run: python -u ticketag_monitor.py
       - name: Salva lo stato
         if: always()
